@@ -1,0 +1,21 @@
+# A minimal home-lab service: nginx serving its site from a named volume, with a healthcheck.
+# On first start Docker copies the image's default site into the empty volume, so there's content to back up.
+name: homelab
+
+services:
+  web:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:8080:80"          # only reachable from this machine
+    volumes:
+      - site-data:/usr/share/nginx/html
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  site-data:

@@ -1,0 +1,33 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: ShellCheck
+        run: shellcheck backup.sh restore-test.sh
+      - name: Start and wait for healthy
+        run: |
+          docker compose up -d --wait
+          docker compose ps
+          curl -sf localhost:8080 | grep -q "Welcome to nginx"
+      - name: Backup + restore test
+        run: ./backup.sh && ./restore-test.sh | tee out.txt && grep -q "^OK:" out.txt
+      - name: Changed site is reported, restore still works
+        run: |
+          docker compose exec -T web sh -c 'echo changed > /usr/share/nginx/html/index.html'
+          ./restore-test.sh | tee out.txt && grep -q "^WARN:" out.txt
+      - name: Retention keeps the newest 3
+        run: |
+          for i in 1 2 3 4; do sleep 1; ./backup.sh; done
+          test "$(find backups -name 'site-*.tar.gz' | wc -l)" -eq 3
+      - name: Corrupted archive must fail
+        run: |
+          truncate -s 100 "$(find backups -name 'site-*.tar.gz' | sort | tail -n 1)"
+          if ./restore-test.sh; then echo "corruption not detected"; exit 1; fi
+      - name: Clean up
+        if: always()
+        run: docker compose down -v
